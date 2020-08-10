@@ -5,11 +5,13 @@
 
 using LESbrary, Random, Printf, Statistics
 
+LESbrary.Utils.select_device!(4)
+
 # Domain
 
 using Oceananigans.Grids
 
-grid = RegularCartesianGrid(size=(64, 64, 64), x=(0, 128), y=(0, 128), z=(-64, 0))
+grid = RegularCartesianGrid(size=(256, 256, 256), x=(0, 256), y=(0, 256), z=(-128, 0))
 
 # Buoyancy and boundary conditions
 
@@ -64,7 +66,15 @@ using LESbrary.Utils: SimulationProgressMessenger
 # Adaptive time-stepping
 wizard = TimeStepWizard(cfl=0.2, Δt=1e-1, max_change=1.1, max_Δt=10.0)
 
-simulation = Simulation(model, Δt=wizard, stop_time=12hour, progress_frequency=100, 
+# Calculate stop time as time when boundary layer depth is h = Lz/2.
+# Uses a conservative estimate based on
+#
+#   h ∼ √(2 * Qᵇ * stop_time / N²)
+
+h = grid.Lz/2 # end boundary layer depth is half domain depth
+stop_time = 1/2 * h^2 * N² / Qᵇ
+
+simulation = Simulation(model, Δt=wizard, stop_time=stop_time, iteration_interval=100, 
                         progress=SimulationProgressMessenger(model, wizard))
 
 # Prepare Output
@@ -73,7 +83,7 @@ using Oceananigans.Utils: GiB
 using Oceananigans.OutputWriters: FieldOutputs, JLD2OutputWriter
 using LESbrary.Statistics: horizontal_averages
 
-prefix = @sprintf("free_convection_Qb%.1e_Nsq%.1e_N%d", Qᵇ, N², grid.Nz)
+prefix = @sprintf("free_convection_Qb%.1e_Nsq%.1e_Nz%d", Qᵇ, N², grid.Nz)
 
 data_directory = joinpath(@__DIR__, "..", "data", prefix) # save data in /data/prefix
 
@@ -87,18 +97,18 @@ fields_to_output = merge(model.velocities, model.tracers)
 simulation.output_writers[:fields] =
     JLD2OutputWriter(model, FieldOutputs(merge(model.velocities, model.tracers)); 
                             force = true,
-                         interval = 4hour, # every quarter period
+                    time_interval = 4hour, # every quarter period
                      max_filesize = 2GiB,
                               dir = data_directory,
                            prefix = prefix * "_fields")
 
 # Horizontal averages
 simulation.output_writers[:averages] =
-    JLD2OutputWriter(model, LESbrary.Statistics.horizontal_averages(model); 
-                        force = true, 
-                     interval = 10minute,
-                          dir = data_directory,
-                       prefix = prefix * "_averages")
+    JLD2OutputWriter(model, LESbrary.Statistics.first_through_third_order(model); 
+                             force = true, 
+                     time_interval = 10minute, # every quarter period
+                               dir = data_directory,
+                            prefix = prefix * "_statistics")
 
 # # Run
 
