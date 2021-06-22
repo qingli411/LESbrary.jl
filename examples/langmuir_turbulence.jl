@@ -27,16 +27,18 @@ using Oceananigans.BoundaryConditions
 using Oceananigans.Diagnostics
 using Oceananigans.OutputWriters
 using Oceananigans.Utils
+using Oceananigans.Units
 
 using LESbrary
 
 using Oceananigans.BuoyancyModels: g_Earth
 using Oceananigans.Fields: PressureField
 using Oceananigans.BuoyancyModels: BuoyancyTracer
-using Oceananigans.SurfaceWaves: UniformStokesDrift
+using Oceananigans.StokesDrift: UniformStokesDrift
 
-using LESbrary.TurbulenceStatistics: TurbulentKineticEnergy, ShearProduction, ViscousDissipation
-using LESbrary.TurbulenceStatistics: first_through_second_order, turbulent_kinetic_energy_budget
+using Oceanostics.TurbulentKineticEnergyTerms: TurbulentKineticEnergy, ShearProduction_z
+using LESbrary.TurbulenceStatistics: first_through_second_order, turbulent_kinetic_energy_budget, ViscousDissipation
+using LESbrary.Utils: SimulationProgressMessenger
 
 "Returns a dictionary of command line arguments."
 function parse_command_line_arguments()
@@ -159,7 +161,7 @@ model = IncompressibleModel(
                buoyancy = BuoyancyTracer(),
                coriolis = FPlane(f=f),
                 closure = AnisotropicMinimumDissipation(),
-          surface_waves = UniformStokesDrift(∂z_uˢ=∂z_uˢ),
+           stokes_drift = UniformStokesDrift(∂z_uˢ=∂z_uˢ),
     boundary_conditions = (u=u_bcs, b=b_bcs),
                 forcing = (u=u_sponge, v=v_sponge, w=w_sponge, b=b_sponge),
 )
@@ -184,35 +186,10 @@ set!(model, u=uᵢ, w=wᵢ, b=bᵢ)
 
 wizard = TimeStepWizard(cfl=1.0, Δt=1.0, max_change=1.1, max_Δt=30.0)
 
-umax = FieldMaximum(abs, model.velocities.u)
-vmax = FieldMaximum(abs, model.velocities.v)
-wmax = FieldMaximum(abs, model.velocities.w)
-
-wall_clock = [time_ns()]
-
-function print_progress(simulation)
-    model = simulation.model
-
-    ## Print a progress message
-    msg = @sprintf("i: %04d, t: %s, Δt: %s, umax = (%.1e, %.1e, %.1e) ms⁻¹, wall time: %s\n",
-                   model.clock.iteration,
-                   prettytime(model.clock.time),
-                   prettytime(wizard.Δt),
-                   umax(), vmax(), wmax(),
-                   prettytime(1e-9 * (time_ns() - wall_clock[1]))
-                  )
-
-    wall_clock[1] = time_ns()
-
-    @info msg
-
-    return nothing
-end
-
 simulation = Simulation(model, iteration_interval = 10,
                                                Δt = wizard,
                                         stop_time = stop_time,
-                                         progress = print_progress)
+                                         progress = SimulationProgressMessenger(wizard))
 
 #####
 ##### Output setup
@@ -236,8 +213,8 @@ V = primitive_statistics[:v]
 # Turbulent kinetic energy budget terms
 
 e = TurbulentKineticEnergy(model, U=U, V=V)
-shear_production = ShearProduction(model, data=c_scratch.data, U=U, V=V)
-dissipation = ViscousDissipation(model, data=c_scratch.data)
+shear_production = ShearProduction_z(model, U=U, V=V)
+dissipation = ViscousDissipation(model)
 
 tke_budget_statistics = turbulent_kinetic_energy_budget(model, b=b, p=p, U=U, V=V, e=e,
                                                         shear_production=shear_production, dissipation=dissipation)
