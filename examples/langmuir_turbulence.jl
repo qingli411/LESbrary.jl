@@ -36,7 +36,7 @@ using Oceananigans.Fields: PressureField
 using Oceananigans.BuoyancyModels: BuoyancyTracer
 using Oceananigans.StokesDrift: UniformStokesDrift
 
-using Oceanostics.TurbulentKineticEnergyTerms: TurbulentKineticEnergy, ShearProduction_z
+using Oceanostics.TKEBudgetTerms: TurbulentKineticEnergy, ZShearProduction
 using LESbrary.TurbulenceStatistics: first_through_second_order, turbulent_kinetic_energy_budget, ViscousDissipation
 using LESbrary.Utils: SimulationProgressMessenger
 
@@ -213,7 +213,7 @@ V = primitive_statistics[:v]
 # Turbulent kinetic energy budget terms
 
 e = TurbulentKineticEnergy(model, U=U, V=V)
-shear_production = ShearProduction_z(model, U=U, V=V)
+shear_production = ZShearProduction(model, U=U, V=V)
 dissipation = ViscousDissipation(model)
 
 tke_budget_statistics = turbulent_kinetic_energy_budget(model, b=b, p=p, U=U, V=V, e=e,
